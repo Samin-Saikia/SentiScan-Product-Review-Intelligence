@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SentiScan — Product Review Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #11111a;
+    --surface2: #18182a;
+    --border: rgba(255,255,255,0.07);
+    --accent: #7c6bff;
+    --accent2: #c084fc;
+    --glow: rgba(124,107,255,0.25);
+    --text: #e8e8f4;
+    --muted: #6b6b8a;
+    --green: #22d88f;
+    --yellow: #f5c542;
+    --orange: #f97316;
+    --red: #f04060;
+    --very-neg: #ef4444;
+    --neg: #f97316;
+    --neutral: #eab308;
+    --pos: #22c55e;
+    --very-pos: #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── noise texture overlay ─── */
+  body::before {
+    content:'';
+    position:fixed;
+    inset:0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events:none;
+    z-index:0;
+    opacity:0.4;
+  }
+
+  /* ─── radial glow bg ─── */
+  .bg-glow {
+    position:fixed;
+    top:-200px; left:50%;
+    transform:translateX(-50%);
+    width:900px; height:600px;
+    background: radial-gradient(ellipse at center, rgba(124,107,255,0.12) 0%, transparent 65%);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  .container {
+    position:relative;
+    z-index:1;
+    max-width:900px;
+    margin:0 auto;
+    padding:0 24px 80px;
+  }
+
+  /* ─── Header ─── */
+  header {
+    padding:52px 0 40px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom:48px;
+  }
+
+  .logo {
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+
+  .logo-icon {
+    width:40px; height:40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius:10px;
+    display:grid;
+    place-items:center;
+    font-size:20px;
+    box-shadow: 0 0 24px var(--glow);
+  }
+
+  .logo-text {
+    font-family:'Syne', sans-serif;
+    font-weight:800;
+    font-size:22px;
+    letter-spacing:-0.5px;
+  }
+
+  .logo-text span { color: var(--accent2); }
+
+  .status-pill {
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    padding:5px 12px;
+    border-radius:20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition: all 0.3s;
+  }
+
+  .status-pill .dot {
+    width:6px; height:6px;
+    border-radius:50%;
+    background: var(--muted);
+    animation: pulse-dot 2s ease infinite;
+  }
+
+  .status-pill.ready { color: var(--green); border-color: rgba(34,216,143,0.3); }
+  .status-pill.ready .dot { background: var(--green); }
+  .status-pill.error { color: var(--red); border-color: rgba(240,64,96,0.3); }
+  .status-pill.error .dot { background: var(--red); animation:none; }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.4; transform:scale(0.7); }
+  }
+
+  /* ─── Tabs ─── */
+  .tabs {
+    display:flex;
+    gap:4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius:14px;
+    padding:4px;
+    margin-bottom:32px;
+  }
+
+  .tab-btn {
+    flex:1;
+    padding:10px 16px;
+    border:none;
+    background:transparent;
+    color: var(--muted);
+    font-family:'Syne', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    border-radius:10px;
+    cursor:pointer;
+    transition: all 0.2s;
+    letter-spacing:0.3px;
+  }
+
+  .tab-btn.active {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  /* ─── Cards ─── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius:20px;
+    padding:32px;
+    margin-bottom:20px;
+  }
+
+  .card-label {
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    color: var(--accent2);
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-bottom:16px;
+  }
+
+  /* ─── Textarea ─── */
+  .input-area {
+    width:100%;
+    min-height:160px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius:14px;
+    padding:20px;
+    color: var(--text);
+    font-family:'DM Sans', sans-serif;
+    font-size:15px;
+    line-height:1.6;
+    resize:vertical;
+    outline:none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .input-area::placeholder { color: var(--muted); }
+
+  .input-area:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124,107,255,0.1);
+  }
+
+  .char-count {
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    color: var(--muted);
+    text-align:right;
+    margin-top:8px;
+  }
+
+  /* ─── Button ─── */
+  .btn-primary {
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color:#fff;
+    border:none;
+    padding:14px 32px;
+    border-radius:12px;
+    font-family:'Syne', sans-serif;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:0.3px;
+    cursor:pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 24px rgba(124,107,255,0.3);
+  }
+
+  .btn-primary:hover {
+    transform:translateY(-1px);
+    box-shadow: 0 8px 32px rgba(124,107,255,0.4);
+  }
+
+  .btn-primary:active { transform:translateY(0); }
+
+  .btn-primary:disabled {
+    opacity:0.5;
+    cursor:not-allowed;
+    transform:none;
+  }
+
+  /* ─── Result Panel ─── */
+  #result-panel {
+    display:none;
+    animation: slide-up 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
+
+  @keyframes slide-up {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  .result-main {
+    display:flex;
+    align-items:center;
+    gap:32px;
+    flex-wrap:wrap;
+  }
+
+  .score-ring-wrap { position:relative; flex-shrink:0; }
+
+  .score-ring {
+    width:120px; height:120px;
+    position:relative;
+  }
+
+  .score-ring svg { position:absolute; inset:0; transform:rotate(-90deg); }
+
+  .score-ring-track { fill:none; stroke: var(--surface2); stroke-width:8; }
+  .score-ring-fill  {
+    fill:none;
+    stroke-width:8;
+    stroke-linecap:round;
+    stroke-dasharray: 326.73;
+    stroke-dashoffset: 326.73;
+    transition: stroke-dashoffset 1s cubic-bezier(0.34,1.56,0.64,1), stroke 0.5s;
+  }
+
+  .score-center {
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .score-number {
+    font-family:'Syne', sans-serif;
+    font-weight:800;
+    font-size:36px;
+    line-height:1;
+  }
+
+  .score-denom {
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    color: var(--muted);
+  }
+
+  .result-meta { flex:1; min-width:200px; }
+
+  .result-label {
+    font-family:'Syne', sans-serif;
+    font-weight:800;
+    font-size:28px;
+    margin-bottom:8px;
+  }
+
+  .result-confidence {
+    font-family:'DM Mono', monospace;
+    font-size:12px;
+    color: var(--muted);
+    margin-bottom:16px;
+  }
+
+  .stars {
+    display:flex;
+    gap:6px;
+    font-size:22px;
+  }
+
+  .star { transition: color 0.3s, transform 0.3s; }
+  .star.lit { animation: star-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+  @keyframes star-pop {
+    0%   { transform:scale(0.5); }
+    60%  { transform:scale(1.2); }
+    100% { transform:scale(1); }
+  }
+
+  /* ─── Bar breakdown ─── */
+  .bar-breakdown { margin-top:24px; }
+
+  .bar-row {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:10px;
+  }
+
+  .bar-label {
+    font-family:'DM Mono', monospace;
+    font-size:12px;
+    color: var(--muted);
+    width:14px;
+    text-align:right;
+    flex-shrink:0;
+  }
+
+  .bar-track {
+    flex:1;
+    height:6px;
+    background: var(--surface2);
+    border-radius:10px;
+    overflow:hidden;
+  }
+
+  .bar-fill {
+    height:100%;
+    border-radius:10px;
+    width:0;
+    transition: width 1s cubic-bezier(0.34,1,0.64,1);
+  }
+
+  /* ─── Loading spinner ─── */
+  .spinner {
+    width:16px; height:16px;
+    border:2px solid rgba(255,255,255,0.3);
+    border-top-color:#fff;
+    border-radius:50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ─── CSV Upload ─── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius:16px;
+    padding:48px 32px;
+    text-align:center;
+    cursor:pointer;
+    transition: all 0.2s;
+    position:relative;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,107,255,0.05);
+  }
+
+  .drop-zone input[type=file] {
+    position:absolute;
+    inset:0;
+    opacity:0;
+    cursor:pointer;
+  }
+
+  .drop-icon { font-size:40px; margin-bottom:12px; }
+
+  .drop-title {
+    font-family:'Syne', sans-serif;
+    font-weight:700;
+    font-size:16px;
+    margin-bottom:6px;
+  }
+
+  .drop-sub {
+    font-size:13px;
+    color: var(--muted);
+  }
+
+  /* ─── CSV Results ─── */
+  #csv-results { display:none; animation: slide-up 0.4s ease; }
+
+  .stat-grid {
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    gap:12px;
+    margin-bottom:20px;
+  }
+
+  .stat-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius:14px;
+    padding:20px;
+    text-align:center;
+  }
+
+  .stat-val {
+    font-family:'Syne', sans-serif;
+    font-weight:800;
+    font-size:28px;
+    margin-bottom:4px;
+  }
+
+  .stat-key {
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    color: var(--muted);
+    letter-spacing:0.5px;
+  }
+
+  .distribution-title {
+    font-family:'Syne', sans-serif;
+    font-weight:700;
+    font-size:14px;
+    margin:20px 0 12px;
+  }
+
+  .dist-row {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:8px;
+    font-size:13px;
+  }
+
+  .dist-star {
+    width:50px;
+    font-family:'DM Mono', monospace;
+    font-size:12px;
+    color: var(--muted);
+    flex-shrink:0;
+  }
+
+  .dist-bar-track {
+    flex:1;
+    height:8px;
+    background: var(--surface2);
+    border-radius:10px;
+    overflow:hidden;
+  }
+
+  .dist-bar-fill {
+    height:100%;
+    border-radius:10px;
+    width:0;
+    transition: width 1s cubic-bezier(0.34,1,0.64,1);
+  }
+
+  .dist-pct {
+    width:40px;
+    text-align:right;
+    font-family:'DM Mono', monospace;
+    font-size:12px;
+    color: var(--muted);
+    flex-shrink:0;
+  }
+
+  /* ─── Preview table ─── */
+  .preview-wrap {
+    margin-top:20px;
+    overflow-x:auto;
+    border-radius:12px;
+    border: 1px solid var(--border);
+  }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+
+  thead th {
+    background: var(--surface2);
+    padding:10px 14px;
+    text-align:left;
+    font-family:'DM Mono', monospace;
+    font-size:11px;
+    color: var(--muted);
+    letter-spacing:0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom:none; }
+
+  tbody td {
+    padding:10px 14px;
+    max-width:400px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color: var(--text);
+  }
+
+  .rate-badge {
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:3px 10px;
+    border-radius:20px;
+    font-family:'DM Mono', monospace;
+    font-size:12px;
+    font-weight:500;
+  }
+
+  /* ─── Error ─── */
+  .error-msg {
+    background: rgba(240,64,96,0.1);
+    border: 1px solid rgba(240,64,96,0.3);
+    color: #f04060;
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:13px;
+    margin-top:12px;
+    display:none;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width:600px) {
+    header { flex-direction:column; gap:16px; align-items:flex-start; }
+    .result-main { gap:20px; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔮</div>
+      <div class="logo-text">Senti<span>Scan</span></div>
+    </div>
+    <div class="status-pill" id="status-pill">
+      <div class="dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('single')">✦ Text Analysis</button>
+    <button class="tab-btn"        onclick="switchTab('csv')">⬆ CSV Batch</button>
+  </div>
+
+  <!-- ══ SINGLE TEXT TAB ══════════════════════════════════════════════ -->
+  <div id="tab-single">
+    <div class="card">
+      <div class="card-label">Input Review Text</div>
+      <textarea
+        id="review-input"
+        class="input-area"
+        placeholder="Type or paste a product review here… e.g. 'Amazing quality, super fast delivery. Totally worth it!'"
+        maxlength="2000"
+        oninput="updateChar()"
+      ></textarea>
+      <div class="char-count"><span id="char-count">0</span> / 2000</div>
+
+      <div style="margin-top:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <button class="btn-primary" id="analyze-btn" onclick="analyzeText()">
+          <span id="btn-text">Analyze Sentiment</span>
+          <div id="btn-spinner" class="spinner" style="display:none;"></div>
+        </button>
+        <button onclick="clearAll()" style="background:none;border:none;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:color 0.2s;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">✕ Clear</button>
+      </div>
+
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <!-- Result -->
+    <div class="card" id="result-panel">
+      <div class="card-label">Analysis Result</div>
+      <div class="result-main">
+        <div class="score-ring-wrap">
+          <div class="score-ring">
+            <svg viewBox="0 0 120 120">
+              <circle class="score-ring-track" cx="60" cy="60" r="52"/>
+              <circle class="score-ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="score-center">
+              <div class="score-number" id="score-num">—</div>
+              <div class="score-denom">/ 5</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-label" id="result-label">—</div>
+          <div class="result-confidence" id="result-conf"></div>
+          <div class="stars" id="stars-row"></div>
+        </div>
+      </div>
+
+      <!-- bar breakdown -->
+      <div class="bar-breakdown" id="bar-breakdown"></div>
+    </div>
+  </div>
+
+  <!-- ══ CSV BATCH TAB ════════════════════════════════════════════════ -->
+  <div id="tab-csv" style="display:none;">
+    <div class="card">
+      <div class="card-label">Upload CSV File</div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" accept=".csv" id="csv-file" onchange="handleFileSelect(this)"/>
+        <div class="drop-icon">📊</div>
+        <div class="drop-title">Drop your CSV here or click to browse</div>
+        <div class="drop-sub">Needs columns: ProductName, Review, Summary</div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="btn-primary" id="csv-btn" onclick="analyzeCSV()" disabled>
+          <span id="csv-btn-text">Analyze CSV</span>
+          <div id="csv-spinner" class="spinner" style="display:none;"></div>
+        </button>
+      </div>
+      <div class="error-msg" id="csv-error-msg"></div>
+    </div>
+
+    <div class="card" id="csv-results">
+      <div class="card-label">Batch Results</div>
+
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div class="stat-val" id="csv-total" style="color:var(--accent2)">—</div>
+          <div class="stat-key">TOTAL REVIEWS</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="csv-good" style="color:var(--green)">—</div>
+          <div class="stat-key">POSITIVE (4-5★)</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="csv-bad" style="color:var(--red)">—</div>
+          <div class="stat-key">NEGATIVE (1-2★)</div>
+        </div>
+      </div>
+
+      <div class="distribution-title">Star Distribution</div>
+      <div id="dist-bars"></div>
+
+      <div class="distribution-title" style="margin-top:24px;">Preview (first 10 rows)</div>
+      <div class="preview-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>TEXT SNIPPET</th>
+              <th>PRED. RATE</th>
+            </tr>
+          </thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const API = 'http://localhost:5000';
+const STAR_COLORS  = { 1:'#ef4444', 2:'#f97316', 3:'#eab308', 4:'#22c55e', 5:'#10b981' };
+const STAR_LABELS  = { 1:'Very Negative', 2:'Negative', 3:'Neutral', 4:'Positive', 5:'Very Positive' };
+const CIRCUMFERENCE = 2 * Math.PI * 52; // 326.73
+
+// ── Health check ─────────────────────────────────────────────────────────
+async function checkHealth() {
+  const pill = document.getElementById('status-pill');
+  const txt  = document.getElementById('status-text');
+  try {
+    const r = await fetch(`${API}/api/health`);
+    const d = await r.json();
+    if (d.model_loaded) {
+      pill.className = 'status-pill ready';
+      txt.textContent = 'Model Ready';
+    } else {
+      pill.className = 'status-pill error';
+      txt.textContent = 'Model Missing';
+    }
+  } catch {
+    pill.className = 'status-pill error';
+    txt.textContent = 'Offline';
+  }
+}
+checkHealth();
+
+// ── Tabs ─────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-single').style.display = tab==='single' ? '' : 'none';
+  document.getElementById('tab-csv').style.display    = tab==='csv'    ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', (i===0 && tab==='single') || (i===1 && tab==='csv'))
+  );
+}
+
+// ── Char counter ──────────────────────────────────────────────────────────
+function updateChar() {
+  document.getElementById('char-count').textContent =
+    document.getElementById('review-input').value.length;
+}
+
+// ── Clear ─────────────────────────────────────────────────────────────────
+function clearAll() {
+  document.getElementById('review-input').value = '';
+  document.getElementById('char-count').textContent = '0';
+  document.getElementById('result-panel').style.display = 'none';
+  hideError('error-msg');
+}
+
+// ── Analyze single text ───────────────────────────────────────────────────
+async function analyzeText() {
+  const text = document.getElementById('review-input').value.trim();
+  if (!text) return;
+
+  setLoading('analyze-btn','btn-text','btn-spinner', true);
+  hideError('error-msg');
+
+  try {
+    const r = await fetch(`${API}/api/predict`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Prediction failed');
+    renderResult(d);
+  } catch(e) {
+    showError('error-msg', e.message);
+  } finally {
+    setLoading('analyze-btn','btn-text','btn-spinner', false);
+  }
+}
+
+function renderResult({score, label, color, confidence, raw}) {
+  const panel = document.getElementById('result-panel');
+  panel.style.display = 'block';
+
+  // ring
+  const fill = document.getElementById('ring-fill');
+  const offset = CIRCUMFERENCE - (score / 5) * CIRCUMFERENCE;
+  fill.style.strokeDashoffset = offset;
+  fill.style.stroke = color;
+
+  // number
+  document.getElementById('score-num').textContent = score;
+  document.getElementById('score-num').style.color = color;
+
+  // label
+  document.getElementById('result-label').textContent = label;
+  document.getElementById('result-label').style.color = color;
+
+  // confidence
+  document.getElementById('result-conf').textContent =
+    `Confidence: ${confidence}%  ·  Raw score: ${raw}`;
+
+  // stars
+  const starsRow = document.getElementById('stars-row');
+  starsRow.innerHTML = '';
+  for (let i=1;i<=5;i++) {
+    const s = document.createElement('span');
+    s.className = 'star' + (i<=score ? ' lit' : '');
+    s.textContent = i<=score ? '★' : '☆';
+    s.style.color = i<=score ? color : 'var(--muted)';
+    s.style.animationDelay = `${(i-1)*0.07}s`;
+    starsRow.appendChild(s);
+  }
+
+  // bar breakdown
+  const bb = document.getElementById('bar-breakdown');
+  bb.innerHTML = '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:13px;margin-bottom:12px;color:var(--muted)">SCORE BREAKDOWN</div>';
+  const descriptions = {
+    1:'Very unhappy, scathing criticism',
+    2:'Mostly negative, disappointed',
+    3:'Mixed, average experience',
+    4:'Generally positive, satisfied',
+    5:'Highly enthusiastic, delighted'
+  };
+
+  for (let i=5; i>=1; i--) {
+    const isActive = i===score;
+    const pct = isActive ? Math.round(confidence) : Math.round((100-confidence)/(4));
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <div class="bar-label" style="color:${STAR_COLORS[i]}">${i}★</div>
+      <div class="bar-track">
+        <div class="bar-fill" data-pct="${isActive ? confidence : 0}"
+             style="background:${STAR_COLORS[i]};opacity:${isActive?1:0.25}">
+        </div>
+      </div>
+      <div style="width:200px;font-size:12px;color:${isActive?'var(--text)':'var(--muted)'};font-family:'DM Mono',monospace">${descriptions[i]}</div>
+    `;
+    bb.appendChild(row);
+  }
+
+  // animate bars
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#bar-breakdown .bar-fill').forEach(el => {
+      const pct = parseFloat(el.dataset.pct);
+      el.style.width = pct + '%';
+    });
+  });
+}
+
+// ── CSV Upload ─────────────────────────────────────────────────────────────
+let selectedFile = null;
+
+function handleFileSelect(input) {
+  selectedFile = input.files[0];
+  if (selectedFile) {
+    const dz = document.getElementById('drop-zone');
+    dz.querySelector('.drop-title').textContent = selectedFile.name;
+    dz.querySelector('.drop-sub').textContent = `${(selectedFile.size/1024).toFixed(1)} KB`;
+    document.getElementById('csv-btn').disabled = false;
+  }
+}
+
+// drag-over styling
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.csv')) {
+    selectedFile = f;
+    dz.querySelector('.drop-title').textContent = f.name;
+    dz.querySelector('.drop-sub').textContent = `${(f.size/1024).toFixed(1)} KB`;
+    document.getElementById('csv-btn').disabled = false;
+  }
+});
+
+async function analyzeCSV() {
+  if (!selectedFile) return;
+  setLoading('csv-btn','csv-btn-text','csv-spinner', true);
+  hideError('csv-error-msg');
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  try {
+    const r = await fetch(`${API}/api/analyze-csv`, { method:'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Analysis failed');
+    renderCSVResults(d);
+  } catch(e) {
+    showError('csv-error-msg', e.message);
+  } finally {
+    setLoading('csv-btn','csv-btn-text','csv-spinner', false);
+  }
+}
+
+function renderCSVResults({total, distribution, summary, preview}) {
+  document.getElementById('csv-results').style.display = 'block';
+  document.getElementById('csv-total').textContent = total.toLocaleString();
+  document.getElementById('csv-good').textContent  = `${summary.good.pct}%`;
+  document.getElementById('csv-bad').textContent   = `${summary.bad.pct}%`;
+
+  // bars
+  const db = document.getElementById('dist-bars');
+  db.innerHTML = '';
+  for (let i=5; i>=1; i--) {
+    const s = String(i);
+    const {count, pct} = distribution[s] || {count:0, pct:0};
+    const row = document.createElement('div');
+    row.className = 'dist-row';
+    row.innerHTML = `
+      <div class="dist-star">${i}★</div>
+      <div class="dist-bar-track">
+        <div class="dist-bar-fill" data-pct="${pct}" style="background:${STAR_COLORS[i]}"></div>
+      </div>
+      <div class="dist-pct">${pct}%</div>
+      <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);width:60px;">${count.toLocaleString()}</div>
+    `;
+    db.appendChild(row);
+  }
+
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#dist-bars .dist-bar-fill').forEach(el => {
+      el.style.width = parseFloat(el.dataset.pct) + '%';
+    });
+  });
+
+  // preview table
+  const tbody = document.getElementById('preview-body');
+  tbody.innerHTML = '';
+  preview.forEach((row, idx) => {
+    const score = row.Predicted_Rate;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--muted);font-family:'DM Mono',monospace;font-size:12px;">${idx+1}</td>
+      <td title="${row.combined_text}">${row.combined_text.substring(0,80)}…</td>
+      <td>
+        <span class="rate-badge" style="background:${STAR_COLORS[score]}22;color:${STAR_COLORS[score]}">
+          ${'★'.repeat(score)} ${STAR_LABELS[score]}
+        </span>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function setLoading(btnId, textId, spinnerId, loading) {
+  document.getElementById(btnId).disabled = loading;
+  document.getElementById(textId).style.opacity = loading ? 0.6 : 1;
+  document.getElementById(spinnerId).style.display = loading ? 'block' : 'none';
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+function hideError(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// keyboard shortcut: Ctrl+Enter
+document.getElementById('review-input').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key==='Enter') analyzeText();
+});
+</script>
+</body>
+</html>
