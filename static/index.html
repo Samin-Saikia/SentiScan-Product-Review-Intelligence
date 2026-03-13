@@ -699,7 +699,7 @@
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
-const API = 'http://localhost:5000';
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 const STAR_COLORS  = { 1:'#ef4444', 2:'#f97316', 3:'#eab308', 4:'#22c55e', 5:'#10b981' };
 const STAR_LABELS  = { 1:'Very Negative', 2:'Negative', 3:'Neutral', 4:'Positive', 5:'Very Positive' };
 const CIRCUMFERENCE = 2 * Math.PI * 52; // 326.73
