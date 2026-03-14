@@ -91,7 +91,7 @@ def analyze_csv():
     text_cols = [c for c in known_cols if c in df.columns]
 
     if not text_cols:
-        text_cols = [c for c in df.columns if df[c].dtype == object]
+        text_cols = [c for c in df.columns if pd.api.types.is_string_dtype(df[c])]
 
     if not text_cols:
         return jsonify({'error': 'No text columns found in CSV.'}), 400
