@@ -7,6 +7,7 @@ import pandas as pd
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
+port = int(os.environ.get("PORT", 10000))
 
 # ── Load model ──────────────────────────────────────────────────────────────
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'sentiment_model.pkl')
@@ -133,4 +134,3 @@ def analyze_csv():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
-    
