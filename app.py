@@ -86,18 +86,20 @@ def analyze_csv():
     except Exception as e:
         return jsonify({'error': f'Could not read CSV: {str(e)}'}), 400
 
-    text_cols = ['ProductName', 'Review', 'Summary']
-    for col in text_cols:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_text)
-        else:
-            df[col] = ''
+    # Use known columns if present, otherwise fall back to ALL text columns
+    known_cols = ['ProductName', 'Review', 'Summary']
+    text_cols = [c for c in known_cols if c in df.columns]
 
-    df['combined_text'] = (
-        df['ProductName'].fillna('') + ' ' +
-        df['Review'].fillna('') + ' ' +
-        df['Summary'].fillna('')
-    )
+    if not text_cols:
+        text_cols = [c for c in df.columns if df[c].dtype == object]
+
+    if not text_cols:
+        return jsonify({'error': 'No text columns found in CSV.'}), 400
+
+    for col in text_cols:
+        df[col] = df[col].apply(clean_text)
+
+    df['combined_text'] = df[text_cols].fillna('').apply(lambda row: ' '.join(row.values), axis=1)
 
     X = model_bundle['vectorizer'].transform(df['combined_text'])
     preds = model_bundle['model'].predict(X)
@@ -111,11 +113,10 @@ def analyze_csv():
         c = int(counts.get(star, 0))
         distribution[str(star)] = {'count': c, 'pct': round(c / total * 100, 2) if total else 0}
 
-    good  = int(df[df['Predicted_Rate'].isin([4, 5])].shape[0])
+    good    = int(df[df['Predicted_Rate'].isin([4, 5])].shape[0])
     neutral = int(df[df['Predicted_Rate'] == 3].shape[0])
-    bad   = int(df[df['Predicted_Rate'].isin([1, 2])].shape[0])
+    bad     = int(df[df['Predicted_Rate'].isin([1, 2])].shape[0])
 
-    # Sample rows for preview
     preview = df[['combined_text', 'Predicted_Rate']].head(10).to_dict(orient='records')
 
     return jsonify({
@@ -132,3 +133,4 @@ def analyze_csv():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+    
